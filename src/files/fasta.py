@@ -10,7 +10,8 @@ import pandas as pd
 # For the HMMer hits, indexing is always relative to the forward strand, so start and stop can be determined by taking the max of the coordinates. 
 
 def get_seq_from_fasta(df:pd.DataFrame, id_:str=None, coords:tuple=None, strand:int=None):
-    
+    # When using this for extracting sequences from HMM hits, the coordinates are always relative to the forward strand, so 
+    # only take the reverse complement after extracting the subsequence. 
     seq = df.loc[id_].seq 
     if coords is not None:
         start, stop = min(coords), max(coords)

@@ -1,4 +1,4 @@
-from src.files.hmmer import HMMerFile, load_hmmer
+from src.files.hmmer import HMMerFile
 from src.files.fasta import FASTAFile, get_seq_from_fasta
 from src.files.gbk import GBKFile
 from src.files.blast import BLASTJsonFile

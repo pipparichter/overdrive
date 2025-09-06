@@ -100,54 +100,7 @@ def get_layout(graph, r:int=5):
 #     return dataset_df
 
 
-has_right_border = lambda df : np.any(df.query_name.str.contains('right_border'))
-has_left_border = lambda df : np.any(df.query_name.str.contains('left_border'))
-has_t_dna = lambda df : df.target_name.map(df.groupby('target_name').apply(lambda df_ : has_right_border(df_) and has_left_border(df_), include_groups=False))
 
-
-def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/ncbi/fasta/', hmmer_df:pd.DataFrame=None, length:int=200, data_dir:str='../data/data-1/'):
-
-    # Require the target sequence to have both a left and right border annotated. This might result in some fragments which do not include
-    # the complete T-DNA region to be discarded. T-DNA ranges between 15-20 KB in size, so might want to check on the average length
-    # of the obtained sequences.  
-    hmmer_df['has_t_dna'] = has_t_dna(hmmer_df)
-    print(f'build_overdrive_sequence: Removing {(~hmmer_df.has_t_dna).sum()} HMM hits in sequences which do not have both a left and right border.')
-    hmmer_df = hmmer_df[hmmer_df.has_t_dna].copy()
-    hmmer_df = hmmer_df[hmmer_df.query_name.str.contains('right_border')].copy() # Only care about right border hits for grabbing the coordinates.
-    
-    dataset_path = os.path.join(data_dir, 'overdrive.csv')
-    if os.path.exists(dataset_path) and (not overwrite):
-        return pd.read_csv(dataset_path, index_col=0)
-
-    dataset_df = list()
-    fasta_paths = glob.glob(os.path.join(fasta_dir, '**/*.fn'), recursive=True)
-    print(f'build_overdrive_dataset: Found {len(fasta_paths)} FASTA files.')
-
-    for source_id, df in hmmer_df.groupby('id'): # The IDs in the HMMer output are the source file names.
-        fasta_path = [path for path in fasta_paths if (re.search(source_id, path) is not None)][0]
-        fasta_df = FASTAFile(fasta_path).to_df()
-
-        for row in df.itertuples(): # There can be multiple annotated right borders. 
-
-            coord_a = row.target_to # Get the end of the right border hit. 
-            coord_b = coord_a + length if (row.strand == '+') else coord_a - length
-
-            row_ = dict()
-            # The get_seq_from_fasta function handles the reverse complement. 
-            row_['seq'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(coord_a, coord_b), strand=row.strand)
-            # Also collect the right border sequence as a sanity check. 
-            row_['right_border'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(row.target_from, row.target_to), strand=row.strand)
-            row_['start'] = min([coord_a, coord_b])
-            row_['stop'] = max([coord_a, coord_b])
-            row_['strand'] = row.strand 
-            row_['source_id'] = source_id
-            row_['contig_id'] = row.target_name
-            dataset_df.append(row_)
-
-    dataset_df = pd.DataFrame(dataset_df) 
-    dataset_df['id'] = [f'OD_{row.contig_id}_{row.start}-{row.stop}' for row in dataset_df.itertuples()] # Make helpful IDs for each overdrive. 
-    dataset_df.set_index('id').to_csv(dataset_path)
-    return dataset_df
 
 
 def load_weisberg_2020_metadata():

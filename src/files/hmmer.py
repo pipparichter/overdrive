@@ -36,19 +36,10 @@ class HMMerFile():
         lines = [HMMerFile.parse_line(line) for line in self.lines]
         content = '\n'.join(['\t'.join(line) for line in lines])
         df = pd.read_csv(io.StringIO(content), sep='\t', header=None, names=HMMerFile.fields)
-        df['id'] = self.id_
+        df['source_id'] = self.id_
         # df = df[df.e_value < max_e_value].copy() # Remove weak hits. 
         return df
     
 
-def load_hmmer(hmmer_dir:str='../data/data-1/hmmer', max_e_value:float=0.05):
-    hmmer_dir = os.path.join(hmmer_dir, '*')
-    hmmer_df = [HMMerFile(path).to_df() for path in glob.glob(hmmer_dir)]
-    hmmer_df = pd.concat([df for df in hmmer_df if (len(df) > 0)])
-    hmmer_df = hmmer_df[hmmer_df.e_value < max_e_value].copy() # Get only significant hits. 
-    # hmmer_df = hmmer_df[hmmer_df.target_description.str.contains('agro|Agro|Rhizo|rhizo', regex=True)].copy()
 
-    for query_name, df in hmmer_df.groupby('query_name'):
-        print(f'load_hmmer: Num. hits for query {query_name}:', len(df))
 
-    return hmmer_df
