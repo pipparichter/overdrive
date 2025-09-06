@@ -107,4 +107,4 @@ def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/
     dataset_df = pd.DataFrame(dataset_df) 
     dataset_df['id'] = [f'{row.contig_id}:{row.start}-{row.stop}' for row in dataset_df.itertuples()] # Make helpful IDs for each overdrive. 
     dataset_df.set_index('id').to_csv(dataset_path)
-    return dataset_df
+    return dataset_df.set_index('id')
