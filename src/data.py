@@ -4,6 +4,7 @@ import numpy as np
 from src.files import FASTAFile, HMMerFile, get_seq_from_fasta
 import glob 
 import re 
+import json
 
 has_right_border = lambda df : np.any(df.annotation.str.contains('right_border'))
 has_left_border = lambda df : np.any(df.annotation.str.contains('left_border'))
@@ -22,7 +23,8 @@ def load_hmmer_files(hmmer_dir:str='../data/data-1/hmmer', max_e_value:float=0.0
     for annotation, df in hmmer_df.groupby('annotation'):
         print(f'load_hmmer: Num. hits for query {annotation}:', len(df))
 
-    hmmer_df['start'] = np.min([hmmer_df.target_to.values, hmmer_df.target_from.values], axis=0)
+    # I think we probably need to adjust the starts to be zero-indexed, as with NCBI files.
+    hmmer_df['start'] = np.min([hmmer_df.target_to.values, hmmer_df.target_from.values], axis=0) - 1
     hmmer_df['stop'] = np.max([hmmer_df.target_to.values, hmmer_df.target_from.values], axis=0)
 
     return hmmer_df
@@ -37,11 +39,11 @@ def _get_t_dna_borders(target_df:pd.DataFrame):
         found_overlap = False
         for start, stop in borders.keys():
             if has_overlap(start, stop, row.start, row.stop):
-                borders[(start, stop)].append({'e_value':row.e_value, 'strand':row.strand, 'annotation':row.annotation})
+                borders[(start, stop)].append({'e_value':row.e_value, 'strand':row.strand, 'annotation':row.annotation, 'source_id':row.source_id})
                 found_overlap = True
                 break
         if not found_overlap:
-            borders[(row.start, row.stop)] = [{'e_value':row.e_value, 'strand':row.strand, 'annotation':row.annotation}]
+            borders[(row.start, row.stop)] = [{'e_value':row.e_value, 'strand':row.strand, 'annotation':row.annotation, 'source_id':row.source_id}]
 
     return borders
 
@@ -53,11 +55,11 @@ def get_t_dna_borders(hmmer_df:pd.DataFrame):
     borders = {target_name:_get_t_dna_borders(df) for target_name, df in hmmer_df.groupby('target_name')}
 
     border_df = list()
-    for contig_id, loci in borders.items():
+    for target_name, loci in borders.items():
         for (start, stop), annotations in loci.items():
             assert len(annotations) <= 2, 'Expected no more than two overlapping border annotations.'
             row = {'start':start, 'stop':stop}
-            row['contig_id'] = contig_id 
+            row['target_name'] = target_name 
             row.update(annotations[0])
             if len(annotations) > 1:
                 row['overlapping_e_value'] = annotations[-1]['e_value']
@@ -67,9 +69,10 @@ def get_t_dna_borders(hmmer_df:pd.DataFrame):
     return border_df # , borders
 
 
-def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/ncbi/fasta/', hmmer_df:pd.DataFrame=None, length:int=200, data_dir:str='../data/data-1/'):
+def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/ncbi/fasta/', hmmer_df:pd.DataFrame=None, length:int=200, data_dir:str='../data/data-1/', min_length:int=50):
 
     border_df = get_t_dna_borders(hmmer_df)
+    border_df.to_csv(os.path.join(data_dir, 'borders.csv'))
     border_df = border_df[border_df.annotation.str.contains('right_border')].copy() # Only care about right border hits for grabbing the coordinates.
     print(f'build_overdrive_dataset: Found {len(border_df)} right borders.')
     
@@ -81,7 +84,7 @@ def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/
     fasta_paths = glob.glob(os.path.join(fasta_dir, '**/*.fn'), recursive=True)
     print(f'build_overdrive_dataset: Found {len(fasta_paths)} FASTA files.')
 
-    for source_id, df in hmmer_df.groupby('source_id'): # The IDs in the HMMer output are the source file names.
+    for source_id, df in border_df.groupby('source_id'): # The IDs in the HMMer output are the source file names.
         fasta_path = [path for path in fasta_paths if (re.search(source_id, path) is not None)][0]
         fasta_df = FASTAFile(fasta_path).to_df()
 
@@ -89,22 +92,24 @@ def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/
 
             # These coordinates are relative to the forward strand, but target_to and target_from are reversed if the hit
             # is on the reverse strand. 
-            coord_a = row.target_to # Get the end of the right border hit. 
-            coord_b = coord_a + length if (row.strand == '+') else coord_a - length # This makes sense. 
+            start = row.stop if (row.strand == '+') else row.start # Get the end of the right border hit. 
+            stop = start + length if (row.strand == '+') else start - length # This makes sense. 
+            start, stop = min(start, stop), max(start, stop)
 
             row_ = dict()
             # The get_seq_from_fasta function handles the reverse complement. 
-            row_['seq'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(coord_a, coord_b), strand=row.strand)
+            row_['seq'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(start, stop), strand=row.strand)
             # Also collect the right border sequence as a sanity check. 
-            row_['right_border'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(row.target_from, row.target_to), strand=row.strand)
-            row_['start'] = min([coord_a, coord_b])
-            row_['stop'] = max([coord_a, coord_b])
+            row_['right_border'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(row.start, row.stop), strand=row.strand)
+            row_['start'] = start
+            row_['stop'] = stop
             row_['strand'] = row.strand 
             row_['source_id'] = source_id
             row_['contig_id'] = row.target_name
             dataset_df.append(row_)
 
     dataset_df = pd.DataFrame(dataset_df) 
+    dataset_df = dataset_df[dataset_df.seq.apply(len) > min_length].copy()
     dataset_df['id'] = [f'{row.contig_id}:{row.start}-{row.stop}' for row in dataset_df.itertuples()] # Make helpful IDs for each overdrive. 
     dataset_df.set_index('id').to_csv(dataset_path)
     return dataset_df.set_index('id')

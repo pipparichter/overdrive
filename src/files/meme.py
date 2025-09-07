@@ -3,6 +3,7 @@ import io
 import pandas as pd
 import numpy as np 
 import re 
+import xml
 
 # def read_csv_chunk(path:str, start_line:int=309, end_line:int=513, sep:str=r'\s+', names:list=None):
 
@@ -80,23 +81,71 @@ class MASTFile():
         df = df[df.e_value < max_e_value].copy()
         return df
     
-    def correct_ids(self, correct_ids:list):
-        # correct_ids = np.array(correct_ids)[~np.isin(correct_ids, self.section_2_df['id'])]
-        df = self.section_2_df[~self.section_2_df['id'].isin(correct_ids)]
-        print(f'MASTFile.correct_ids: {len(df)} IDs to correct.')
-        corrected_ids = dict()
+class MASTXMLFile():
 
-        for id_ in df['id']:
-            matches = [re.search(id_.strip(), correct_id) for correct_id in correct_ids]
-            idxs = [i for i, match_ in enumerate(matches) if (match_ is not None)]
-            if len(idxs) == 0:
-                print(f'MASTFile.correct_ids: No match for ID {id_}.')
-            else:
-                corrected_ids[id_] = correct_ids[idxs[0]]
-        self.section_2_df['id'] = np.where(self.section_2_df['id'].isin(corrected_ids), self.section_2_df['id'].map(corrected_ids), self.section_2_df['id'])
+    def __init__(self, path:str):
+
+        with open(path, 'r') as f:
+            content = f.read()
+
+        tree = xml.etree.ElementTree.fromstring(content)
+
+        motifs = tree.findall('.//motifs/motif')
+        self.motif_names = [motif.attrib['alt'] for motif in motifs]
+        self.motif_lengths = [int(motif.attrib['length']) for motif in motifs]
+
+        df = list()
+        seqs = tree.findall('.//sequence')
+        for seq in seqs:
+            hits = seq.findall('./seg/hit')
+            for hit in hits:
+                row = {'id':seq.attrib['name']}
+                row['motif_idx'] = int(hit.attrib['idx'])
+                row['start'] = int(hit.attrib['pos'])
+                row['stop'] = row['start'] + self.motif_lengths[row['motif_idx']]
+                row['length'] = self.motif_lengths[row['motif_idx']]
+                row['p_value'] = float(hit.attrib['pvalue'])
+                row['strand'] = '+' if (hit.attrib['rc'] == 'n') else '-'
+                row['motif_name'] = self.motif_names[row['motif_idx']]
+                df.append(row)
+
+        df = pd.DataFrame(df)
+        self.df = self.get_significance(df)
+
+    def get_significance(self, df:pd.DataFrame):
+
+        idx_to_significance_map = dict()
+        for motif, df_ in df.groupby('motif_name'):
+            best_p_value, worst_p_value = df_.p_value.min(), df_.p_value.max()
+            delta = np.abs(best_p_value - worst_p_value)
+            f = lambda p_value : 1 if (delta == 0) else min(abs(worst_p_value + delta/100 - p_value) / delta, 1)
+            idx_to_significance_map.update(df_.p_value.apply(f).to_dict())
+        df['significance'] = df.index.map(idx_to_significance_map)
+        return df
+
+    def to_df(self):
+        return self.df
+
+
+# Left over from when the IDs were too long and were being truncated by MEME. 
+
+    # def correct_ids(self, correct_ids:list):
+    #     # correct_ids = np.array(correct_ids)[~np.isin(correct_ids, self.section_2_df['id'])]
+    #     df = self.section_2_df[~self.section_2_df['id'].isin(correct_ids)]
+    #     print(f'MASTFile.correct_ids: {len(df)} IDs to correct.')
+    #     corrected_ids = dict()
+
+    #     for id_ in df['id']:
+    #         matches = [re.search(id_.strip(), correct_id) for correct_id in correct_ids]
+    #         idxs = [i for i, match_ in enumerate(matches) if (match_ is not None)]
+    #         if len(idxs) == 0:
+    #             print(f'MASTFile.correct_ids: No match for ID {id_}.')
+    #         else:
+    #             corrected_ids[id_] = correct_ids[idxs[0]]
+    #     self.section_2_df['id'] = np.where(self.section_2_df['id'].isin(corrected_ids), self.section_2_df['id'].map(corrected_ids), self.section_2_df['id'])
         
-        n_incorrect = (~self.section_2_df['id'].isin(correct_ids)).sum()
-        assert n_incorrect == 0, f'MASTFile.correct_ids: {n_incorrect} incorrect IDs remaining.'
+    #     n_incorrect = (~self.section_2_df['id'].isin(correct_ids)).sum()
+    #     assert n_incorrect == 0, f'MASTFile.correct_ids: {n_incorrect} incorrect IDs remaining.'
 
 
 # def get_motif_data(df:pd.DataFrame, pattern:str=motif_1a_10):
