@@ -11,11 +11,17 @@ import networkx as nx
 import io
 import subprocess
 import re
+from Bio.Seq import Seq
+
 
 # subprocess.run('export PATH=${HOME}/edirect:${PATH}', shell=True, check=True)
 os.environ['PATH'] += os.pathsep + '/home/prichter/edirect'
 
 data_dir = '../data/data-1'
+
+def reverse_complement(seq:str):
+    seq = str(Seq(seq).reverse_complement())
+    return seq
 
 def read_csv_chunk(path:str, start_line:int=309, end_line:int=513, sep:str=r'\s+', names:list=None):
 

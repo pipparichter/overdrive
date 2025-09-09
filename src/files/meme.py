@@ -97,16 +97,20 @@ class MASTXMLFile():
         df = list()
         seqs = tree.findall('.//sequence')
         for seq in seqs:
-            hits = seq.findall('./seg/hit')
-            for hit in hits:
-                row = {'id':seq.attrib['name']}
-                row['motif_idx'] = int(hit.attrib['idx'])
-                row['start'] = int(hit.attrib['pos'])
-                row['stop'] = row['start'] + self.motif_lengths[row['motif_idx']]
-                row['length'] = self.motif_lengths[row['motif_idx']]
-                row['p_value'] = float(hit.attrib['pvalue'])
-                row['strand'] = '+' if (hit.attrib['rc'] == 'n') else '-'
-                row['motif_name'] = self.motif_names[row['motif_idx']]
+            for seg in seq.findall('./seg'):
+                seg_start = int(seg.attrib['start'])
+                seg_seq = seg.find('./data').text 
+                for hit in seg.findall('./hit'):
+                    row = {'id':seq.attrib['name']}
+                    row['motif_idx'] = int(hit.attrib['idx'])
+                    row['start'] = int(hit.attrib['pos'])
+                    row['stop'] = row['start'] + self.motif_lengths[row['motif_idx']]
+                    row['length'] = self.motif_lengths[row['motif_idx']]
+                    row['p_value'] = float(hit.attrib['pvalue'])
+                    row['strand'] = '+' if (hit.attrib['rc'] == 'n') else '-'
+                    row['motif_name'] = self.motif_names[row['motif_idx']]
+                    row['seq'] = seg_seq[row['start'] - seg_start - 1:row['stop'] - seg_start]
+
                 df.append(row)
 
         df = pd.DataFrame(df)
