@@ -17,6 +17,7 @@ def get_seq_from_fasta(df:pd.DataFrame, id_:str=None, coords:tuple=None, strand:
         # start = start - 1 # I think just do the same start adjustment we needed to do before, seems like HMMer is also 1-indexed. 
         seq = seq[coords[0]:coords[1]] 
 
+    assert strand in ['+', '-'], f'get_seq_from_fasta: Expected strand to be + or -, got {strand}.'
     if (strand == '-'):
         seq = str(Seq(seq).reverse_complement())
 

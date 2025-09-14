@@ -16,6 +16,8 @@ from Bio.Seq import Seq
 
 # subprocess.run('export PATH=${HOME}/edirect:${PATH}', shell=True, check=True)
 os.environ['PATH'] += os.pathsep + '/home/prichter/edirect'
+os.environ['PATH'] += os.pathsep + '/home/prichter/meme'
+os.environ['PATH'] += os.pathsep + '/home/prichter/meme/bin'
 
 data_dir = '../data/data-1'
 
@@ -73,37 +75,40 @@ def get_layout(graph, r:int=5):
     return pos 
 
 
-# def build_virc_dataset(product:str='VirC1', overwrite:bool=False, gbk_dir:str='../data/data-1/gbk/assemblies', plasmid_contig_ids:list=None):
+def build_virc_dataset(product:str='VirC1', overwrite:bool=False, genbank_dir:str='../data/data-1/ncbi/genbank/'):
 
-#     dataset_path = f'{data_dir}/{product.lower()}.csv'
-#     if os.path.exists(dataset_path) and (not overwrite):
-#         return pd.read_csv(dataset_path, index_col=0)
+    dataset_path = f'{data_dir}/{product.lower()}.csv'
+    if os.path.exists(dataset_path) and (not overwrite):
+        return pd.read_csv(dataset_path, index_col=0)
 
-#     dataset_df = list()
-#     for path in tqdm(glob.glob(f'{gbk_dir}/*'), desc='build_virc_dataset'):
-#         strain_id = os.path.basename(path).replace('.gbk', '')
-#         df = GBKFile(path).to_df()
-#         df = df[df['product'].str.contains(product, case=False)].copy()
-#         for row in df.itertuples():
-#             row_ = dict()
-#             row_['contig_id'] = row.contig_id
-#             row_['strain_id'] = strain_id 
-#             row_['seq'] = row.seq 
-#             row_['product'] = row.product
-#             row_['locus_tag'] = row.locus_tag
-#             row_['gene'] = row.gene
-#             dataset_df.append(row_)
+    dataset_df = list()
+    for path in tqdm(glob.glob(f'{genbank_dir}/*'), desc='build_virc_dataset'):
+        source_id = os.path.basename(path).replace('.gbk', '')
+        df = GBKFile(path).to_df()
+        # Sometimes, the product is not VirC1, but the note says "probable virC1 gene"
+        virc_mask = df['product'].str.contains(product, case=False) | df['note'].str.contains(product, case=False) | df['gene'].str.contains(product, case=False)
+        df = df[virc_mask].copy()
+        for row in df.itertuples():
+            row_ = dict()
+            row_['contig_id'] = row.contig_id
+            row_['source_id'] = source_id 
+            row_['strain_id'] = source_id.replace('_ti', '').replace('_ri', '')
+            row_['seq'] = row.seq 
+            row_['product'] = row.product
+            row_['locus_tag'] = row.locus_tag
+            row_['gene'] = row.gene
+            dataset_df.append(row_)
 
-#     dataset_df = pd.DataFrame(dataset_df)
+    dataset_df = pd.DataFrame(dataset_df)
 
-#     # There is VirC annotated elsewhere in a handful of the assemblies, but will probably just focus on the VirC found on the plasmid. 
-#     if plasmid_contig_ids is not None:
-#         mask = dataset_df.contig_id.isin(plasmid_contig_ids)
-#         print(f'build_virc_dataset: Removing {(~mask).sum()} {product} proteins not found on the plasmids.')
-#         dataset_df = dataset_df[mask].copy()
+    # # There is VirC annotated elsewhere in a handful of the assemblies, but will probably just focus on the VirC found on the plasmid. 
+    # if plasmid_contig_ids is not None:
+    #     mask = dataset_df.contig_id.isin(plasmid_contig_ids)
+    #     print(f'build_virc_dataset: Removing {(~mask).sum()} {product} proteins not found on the plasmids.')
+    #     dataset_df = dataset_df[mask].copy()
 
-#     dataset_df.to_csv(dataset_path)
-#     return dataset_df
+    dataset_df.to_csv(dataset_path)
+    return dataset_df
 
 
 

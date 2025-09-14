@@ -23,7 +23,8 @@ class GBKFile():
 
     qualifier_pattern = re.compile(r'/([a-zA-Z_]+)="([^"]+)"') # Two capturing groups so that re.findall gets a list of tuples. 
     # The question mark is for lazy matching, so it only matches until the first /translation qualifier. 
-    cds_feature_pattern = r'CDS\s+.*?/translation=".*?"'
+    # cds_feature_pattern = r'CDS\s+.*?/translation=".*?"'
+    cds_feature_pattern = r'CDS\s+.*?(?=\s{2,}(?:gene|sig_peptide|rRNA|tRNA|CDS)\s{2,}|\Z)'
 
     # The order of these coordinate patterns is important, as want to prioritize the outer match; coordinates can be of the form complement(join(..)),
     # for example, and I want to make sure I don't just match the substring. It is also important to enable multiline, as sometimes the coordinates span multiple lines.
@@ -91,9 +92,11 @@ class GBKFile():
             parsed_feature_['coordinate'] = coordinate
             parsed_feature_['pseudo'] = pseudo
             parsed_feature_['seq'] = re.sub(r'[\s]+', '', qualifiers.get('translation', 'none')) # Remove leftover whitespace in sequence. 
-            parsed_feature_['product'] = qualifiers.get('product', 'none')
             parsed_feature_['locus_tag'] = qualifiers.get('locus_tag', 'none')
+            # if parsed_feature['locus_tag'] == 'AS1F9_05626':
+            parsed_feature_['product'] = qualifiers.get('product', 'none')
             parsed_feature_['gene'] = qualifiers.get('gene', 'none')
+            parsed_feature_['note'] = qualifiers.get('note', 'none')
             parsed_feature_.update(parsed_coordinate)
             parsed_feature.append(parsed_feature_)
 
@@ -103,6 +106,9 @@ class GBKFile():
     def parse_contig(contig:str) -> pd.DataFrame:
         seq = re.search(r'ORIGIN(.*?)(?=(//)|$)', contig, flags=re.DOTALL).group(1)
         contig_id = contig.split()[0].strip()
+
+        contig = contig.split('ORIGIN')[0] # Remove the nucleotide sequence. 
+        contig = contig.split('FEATURES')[-1] # Remove the header information. 
         cds_features = re.findall(GBKFile.cds_feature_pattern, contig, flags=re.DOTALL)
 
         if len(cds_features) == 0: # Catches the case where the contig is not associated with any gene features. 

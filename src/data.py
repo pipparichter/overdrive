@@ -30,7 +30,7 @@ def load_hmmer_files(hmmer_dir:str='../data/data-1/hmmer', max_e_value:float=0.0
     return hmmer_df
 
 
-def _get_t_dna_borders(target_df:pd.DataFrame):
+def _resolve_borders(target_df:pd.DataFrame):
 
     assert np.all(target_df.target_name == target_df.target_name.iloc[0]), 'get_t_dna_borders: Expected the DataFrame to correspond to only one target sequence.'
     target_df = target_df.sort_values('e_value', ascending=True)
@@ -48,13 +48,28 @@ def _get_t_dna_borders(target_df:pd.DataFrame):
     return borders
 
 
-def get_t_dna_borders(hmmer_df:pd.DataFrame):
+def _filter_borders(target_df:pd.DataFrame):
+
+    get_next = lambda i : 'none' if (i == (len(target_df) - 1)) else target_df.iloc[i + 1].annotation
+    get_previous = lambda i : 'none' if (i == 0) else target_df.iloc[i - 1].annotation
+    
+    target_df = target_df.sort_values('start')
+    target_df['previous_annotation'] = [get_previous(i) for i in range(len(target_df))]
+    target_df['next_annotation'] = [get_next(i) for i in range(len(target_df))]
+
+    mask = (target_df.annotation.str.contains('right_border'))
+    mask = mask & target_df.next_annotation.str.contains('none|left_border')
+    mask = mask & target_df.previous_annotation.str.contains('none|left_border')
+    return target_df[mask].copy()
+
+
+def resolve_borders(hmmer_df:pd.DataFrame, filter_:bool=True):
 
     hmmer_df = hmmer_df[hmmer_df.annotation != 'overdrive'].copy()
 
-    borders = {target_name:_get_t_dna_borders(df) for target_name, df in hmmer_df.groupby('target_name')}
+    borders = {target_name:_resolve_borders(df) for target_name, df in hmmer_df.groupby('target_name')}
 
-    border_df = list()
+    hmmer_df = list()
     for target_name, loci in borders.items():
         for (start, stop), annotations in loci.items():
             assert len(annotations) <= 2, 'Expected no more than two overlapping border annotations.'
@@ -63,18 +78,23 @@ def get_t_dna_borders(hmmer_df:pd.DataFrame):
             row.update(annotations[0])
             if len(annotations) > 1:
                 row['overlapping_e_value'] = annotations[-1]['e_value']
-            border_df.append(row)
-    border_df = pd.DataFrame(border_df)
+            hmmer_df.append(row)
+    hmmer_df = pd.DataFrame(hmmer_df)
 
-    return border_df # , borders
+    if filter_:
+        hmmer_df = pd.concat([_filter_borders(df).assign(target_name=target_name) for target_name, df in hmmer_df.groupby('target_name')])
+
+    return hmmer_df # , borders
+
+
 
 
 def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/ncbi/fasta/', hmmer_df:pd.DataFrame=None, length:int=200, data_dir:str='../data/data-1/', min_length:int=50):
 
-    border_df = get_t_dna_borders(hmmer_df)
-    border_df.to_csv(os.path.join(data_dir, 'borders.csv'))
-    border_df = border_df[border_df.annotation.str.contains('right_border')].copy() # Only care about right border hits for grabbing the coordinates.
-    print(f'build_overdrive_dataset: Found {len(border_df)} right borders.')
+    hmmer_df = resolve_borders(hmmer_df)
+    hmmer_df.to_csv(os.path.join(data_dir, 'borders.csv'))
+    hmmer_df = hmmer_df[hmmer_df.annotation.str.contains('right_border')].copy() # Only care about right border hits for grabbing the coordinates.
+    print(f'build_overdrive_dataset: Found {len(hmmer_df)} right borders.')
     
     dataset_path = os.path.join(data_dir, 'overdrive.csv')
     if os.path.exists(dataset_path) and (not overwrite):
@@ -84,7 +104,7 @@ def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/
     fasta_paths = glob.glob(os.path.join(fasta_dir, '**/*.fn'), recursive=True)
     print(f'build_overdrive_dataset: Found {len(fasta_paths)} FASTA files.')
 
-    for source_id, df in border_df.groupby('source_id'): # The IDs in the HMMer output are the source file names.
+    for source_id, df in hmmer_df.groupby('source_id'): # The IDs in the HMMer output are the source file names.
         fasta_path = [path for path in fasta_paths if (re.search(source_id, path) is not None)][0]
         fasta_df = FASTAFile(fasta_path).to_df()
 
@@ -95,12 +115,22 @@ def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/
             start = row.stop if (row.strand == '+') else row.start # Get the end of the right border hit. 
             stop = start + length if (row.strand == '+') else start - length # This makes sense. 
             start, stop = min(start, stop), max(start, stop)
+            # next_stop = stop + length if (row.strand == '+') else stop - length # This makes sense. 
+            
+            left_of_right_border_stop = row.start if (row.strand == '+') else row.stop 
+            left_of_right_border_start = left_of_right_border_stop - 100 if (row.strand == '+') else left_of_right_border_stop + 100
+            left_of_right_border_stop, left_of_right_border_start = max(left_of_right_border_stop, left_of_right_border_start), min(left_of_right_border_stop, left_of_right_border_start)
+            # next_start, next_stop = min(stop, next_stop), max(stop, next_stop)
 
             row_ = dict()
             # The get_seq_from_fasta function handles the reverse complement. 
             row_['seq'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(start, stop), strand=row.strand)
+            # row_['next_seq'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(next_start, next_stop), strand=row.strand)
             # Also collect the right border sequence as a sanity check. 
-            row_['right_border'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(row.start, row.stop), strand=row.strand)
+            row_['right_border_seq'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(row.start, row.stop), strand=row.strand)
+            row_['left_of_right_border_seq'] = get_seq_from_fasta(fasta_df, id_=row.target_name, coords=(left_of_right_border_start, left_of_right_border_stop), strand=row.strand)
+            row_['left_of_right_border_start'] = left_of_right_border_start
+            row_['left_of_right_border_stop'] = left_of_right_border_stop
             row_['start'] = start
             row_['stop'] = stop
             row_['strand'] = row.strand 
