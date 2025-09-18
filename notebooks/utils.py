@@ -12,6 +12,7 @@ import io
 import subprocess
 import re
 from Bio.Seq import Seq
+import matplotlib as mpl 
 
 
 # subprocess.run('export PATH=${HOME}/edirect:${PATH}', shell=True, check=True)
@@ -20,6 +21,18 @@ os.environ['PATH'] += os.pathsep + '/home/prichter/meme'
 os.environ['PATH'] += os.pathsep + '/home/prichter/meme/bin'
 
 data_dir = '../data/data-1'
+
+def get_palette(df:pd.DataFrame, cmap:str='tab20c', field:str='plasmid_type'):
+    cmap = mpl.colormaps.get_cmap(cmap)
+    cmap = cmap.resampled(df[field].nunique())
+    palette = {f:cmap(i) for i, f in enumerate(df[field].unique())} # Map each category to a color. 
+    return palette
+
+
+def load_msa(path):
+    msa_df = FASTAFile(path=path).to_df()
+    alignment = np.array([list(seq) for seq in msa_df.seq])
+    return msa_df.index.values, alignment
 
 def reverse_complement(seq:str):
     seq = str(Seq(seq).reverse_complement())
@@ -131,3 +144,18 @@ def load_weisberg_2020_metadata():
     metadata_df['source_id'] = [f'{row.strain_id}_{row.plasmid_class.lower()}' for row in metadata_df.itertuples()]
     metadata_df = metadata_df.drop_duplicates('source_id')
     return metadata_df
+
+
+def get_shannon_entropy(alignment:np.ndarray, pad_token:str='X'):
+    '''Compute the Shannon entropy for each position in an alignment, represented as a 2D numpy array 
+    of shape (n_samples, seq_length).'''
+    entropies = list()
+    labels = [] # Labels will be the most common symbol at each position. 
+    for i in range(alignment.shape[-1]):
+        residues = alignment.T[i]
+        residues = residues[residues != pad_token] # Don't count padding residues. 
+        probabilities = [(residues == residue).mean() for residue in np.unique(residues)]
+        labels.append(np.unique(residues)[np.argmax(probabilities)])
+        entropy = -sum([p * np.log(p) for p in probabilities])
+        entropies.append(entropy)
+    return np.array(entropies), np.array(labels)

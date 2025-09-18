@@ -5,6 +5,8 @@ from src.files import FASTAFile, HMMerFile, get_seq_from_fasta
 import glob 
 import re 
 import json
+from tqdm import tqdm
+from Bio.Seq import Seq
 
 has_right_border = lambda df : np.any(df.annotation.str.contains('right_border'))
 has_left_border = lambda df : np.any(df.annotation.str.contains('left_border'))
@@ -143,3 +145,31 @@ def build_overdrive_dataset(overwrite:bool=False, fasta_dir:str='../data/data-1/
     dataset_df['id'] = [f'{row.contig_id}:{row.start}-{row.stop}' for row in dataset_df.itertuples()] # Make helpful IDs for each overdrive. 
     dataset_df.set_index('id').to_csv(dataset_path)
     return dataset_df.set_index('id')
+
+
+def check_overdrive_dataset(overdrive_df:pd.DataFrame, data_dir='../data/data-1'):
+    '''Check the raw files to make sure I actually grabbed overdrives that exist in the FASTA.'''
+    for row in tqdm(list(overdrive_df.itertuples()), desc='check_overdrive_dataset'):
+        path = os.path.join(data_dir, f'ncbi/fasta/{row.source_id}.fn')
+        with open(path, 'r') as f:
+            content = f.read().replace('\n', '')
+        seq = re.sub(r'\s+', '', row.seq)
+        if (row.strand == '-'):
+            seq = str(Seq(seq).reverse_complement())
+        assert re.search(seq, content) is not None, f'Overdrive sequence not found in {path}.'
+
+
+def check_virc1_dataset(virc1_df:pd.DataFrame):
+    '''Check the raw files to make sure I grabbed a VirC1 from all annotations which have them.'''
+
+    for path in tqdm(glob.glob('../data/data-1/ncbi/genbank/*'), desc='check_virc1_dataset'):
+        source_id = os.path.basename(path).replace('.gbk', '')
+        with open(path, 'r') as f:
+            content = f.read().replace('\n', '')
+        
+        if re.search(r'[vV]ir[cC]1', content) is not None:
+            # print(source_id)
+            assert source_id in virc1_df.source_id.values, f'VirC1 sequence in {path} is not present in the dataset.'
+
+# check_overdrive_dataset(overdrive_df)
+# check_virc1_dataset(virc1_df)

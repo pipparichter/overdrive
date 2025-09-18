@@ -1,93 +1,14 @@
 import pandas as pd 
 import numpy as np 
 
-ry2 = {
-    'A':'R','G':'R',   # Purines
-    'C':'Y','T':'Y',   # Pyrimidines
-    'U':'Y'            # RNA pyrimidine
-}
 
-# 2. Strong (S) vs Weak (W) base pairs
-# Strong = G/C (3 H-bonds), Weak = A/T (2 H-bonds)
-sw2 = {
-    'G':'S','C':'S',
-    'A':'W','T':'W',
-    'U':'W'
-}
+dayhoff = {'A':'A','G':'A','P':'A','S':'A','T':'A','D':'B','E':'B','N':'B','Q':'B','R':'C','H':'C','K':'C', 'M':'D','I':'D','L':'D','V':'D','F':'E','W':'E','Y':'E','C':'F' }
 
-# 3. Keto (K) vs Amino (M)
-# Keto: G/T(U); Amino: A/C
-km2 = {
-    'G':'K','T':'K','U':'K',
-    'A':'M','C':'M'
-}
+hp = {'A':'H','V':'H','L':'H','I':'H','P':'H','F':'H','W':'H','M':'H','Y':'H','G':'P','S':'P','T':'P','C':'P','N':'P','Q':'P','D':'P','E':'P','K':'P','R':'P','H':'P'}
 
-# 4. 3-letter reduced alphabet (IUPAC-style groupings)
-# (a) Purines, Pyrimidines, and G/T distinction
-ry3 = {
-    'A':'R','G':'R',     # Purines
-    'C':'Y',             # Pyrimidine C
-    'T':'T','U':'T'      # Pyrimidine T/U
-}
+ba = {'K':'B','R':'B','H':'B','D':'A','E':'A','A':'N','C':'N','F':'N','G':'N','I':'N','L':'N','M':'N','N':'N','P':'N','Q':'N','S':'N','T':'N','V':'N','W':'N','Y':'N'}
 
-# (b) Transition vs Transversion scheme
-# Group 1: A/G (transition), Group 2: C/T (transition), Group 3: everything else (N)
-transition3 = {
-    'A':'R','G':'R',
-    'C':'Y','T':'Y','U':'Y',
-    'N':'N'
-}
 
-# 5. Binary encoding by hydrogen bonds
-# 1 = strong (G/C), 0 = weak (A/T/U)
-hb2 = {
-    'G':'1','C':'1',
-    'A':'0','T':'0','U':'0'
-}
-
-dayhoff6 = {
-    'A':'A','G':'A','P':'A','S':'A','T':'A',                # Small
-    'D':'B','E':'B','N':'B','Q':'B',                        # Acidic / amide
-    'R':'C','H':'C','K':'C',                                # Basic
-    'M':'D','I':'D','L':'D','V':'D',                        # Hydrophobic
-    'F':'E','W':'E','Y':'E',                                # Aromatic
-    'C':'F'                                                 # Cysteine
-}
-
-murphy10 = {
-    'A':'A','G':'A','P':'A','S':'A','T':'A',                # Tiny/polar
-    'D':'B','E':'B',                                        # Acidic
-    'N':'C','Q':'C',                                        # Amide
-    'R':'D','H':'D','K':'D',                                # Basic
-    'M':'E','I':'E','L':'E','V':'E',                        # Aliphatic
-    'F':'F','W':'F','Y':'F',                                # Aromatic
-    'C':'G'                                                 # Cysteine
-}
-
-li5 = {
-    'A':'A','G':'A','V':'A','L':'A','I':'A','P':'A',        # Hydrophobic
-    'F':'B','Y':'B','W':'B',                                # Aromatic
-    'D':'C','E':'C',                                        # Acidic
-    'K':'D','R':'D','H':'D',                                # Basic
-    'S':'E','T':'E','N':'E','Q':'E','M':'E','C':'E'         # Polar
-}
-
-hp2 = {
-    'A':'H','V':'H','L':'H','I':'H','P':'H','F':'H',
-    'W':'H','M':'H','Y':'H',                                # Hydrophobic
-    'G':'P','S':'P','T':'P','C':'P','N':'P','Q':'P',
-    'D':'P','E':'P','K':'P','R':'P','H':'P'                 # Polar
-}
-
-zhou7 = {
-    'A':'1','G':'1','V':'1',                                # Small hydrophobic
-    'I':'2','L':'2','M':'2',                                # Large hydrophobic
-    'F':'3','W':'3','Y':'3',                                # Aromatic
-    'C':'4',                                                # Cysteine
-    'P':'5',                                                # Proline
-    'T':'6','S':'6','N':'6','Q':'6',                        # Polar uncharged
-    'D':'7','E':'7','K':'7','R':'7','H':'7'                 # Charged
-}
 
 
 def reduce(seq:str, alphabet:dict):
